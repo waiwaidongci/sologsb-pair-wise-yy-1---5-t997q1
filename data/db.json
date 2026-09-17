@@ -23,6 +23,16 @@
   ],
   "retests": [
     {
+      "id": "retest_legacy",
+      "clockId": "clock_demo",
+      "adjustmentId": null,
+      "testedAt": "2026-05-20T00:00:00.000Z",
+      "dailyRateSeconds": 18,
+      "amplitude": 250,
+      "qualified": true,
+      "note": "历史遗留复测，当时未强制记录调校编号，仍保留可查"
+    },
+    {
       "id": "retest_demo",
       "clockId": "clock_demo",
       "adjustmentId": "adjustment_demo",

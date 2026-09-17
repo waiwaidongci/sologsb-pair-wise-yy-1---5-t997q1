@@ -30,6 +30,16 @@ const initialData = {
   ],
   retests: [
     {
+      id: "retest_legacy",
+      clockId: "clock_demo",
+      adjustmentId: null,
+      testedAt: "2026-05-20T00:00:00.000Z",
+      dailyRateSeconds: 18,
+      amplitude: 250,
+      qualified: true,
+      note: "历史遗留复测，当时未强制记录调校编号，仍保留可查"
+    },
+    {
       id: "retest_demo",
       clockId: "clock_demo",
       adjustmentId: "adjustment_demo",
@@ -102,6 +112,12 @@ function required(body, fields) {
     error.status = 400;
     throw error;
   }
+}
+
+function conflict(message) {
+  const error = new Error(message);
+  error.status = 409;
+  return error;
 }
 
 function findClock(db, clockId) {
@@ -210,14 +226,27 @@ async function handle(req, res) {
     const clock = findClock(db, retestMatch[1]);
     const body = await parseBody(req);
     required(body, ["dailyRateSeconds", "amplitude"]);
-    const adjustmentId = body.adjustmentId || latestAdjustment(db, clock.id)?.id || null;
+
+    // 可追溯规则：复测必须引用该钟表最近一次调校编号，校验全部通过后才允许写入
+    if (!body.adjustmentId) {
+      throw conflict("复测必须引用该钟表最近一次调校编号（adjustmentId 缺失）");
+    }
+    const referenced = db.adjustments.find((item) => item.id === body.adjustmentId);
+    if (!referenced || referenced.clockId !== clock.id) {
+      throw conflict("调校编号不存在或不属于该钟表，复测拒绝写入");
+    }
+    const latest = latestAdjustment(db, clock.id);
+    if (!latest || referenced.id !== latest.id) {
+      throw conflict(`调校编号 ${body.adjustmentId} 不是该钟表最近一次调校（最近一次为 ${latest?.id || "无"}），复测拒绝写入`);
+    }
+
     const qualified = body.qualified !== undefined
       ? Boolean(body.qualified)
       : Math.abs(Number(body.dailyRateSeconds)) <= Number(clock.targetDailyRateSeconds);
     const retest = {
       id: makeId("retest"),
       clockId: clock.id,
-      adjustmentId,
+      adjustmentId: referenced.id,
       testedAt: body.testedAt || new Date().toISOString(),
       dailyRateSeconds: Number(body.dailyRateSeconds),
       amplitude: Number(body.amplitude),
