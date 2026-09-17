@@ -31,6 +31,16 @@
       "amplitude": 248,
       "qualified": false,
       "note": "仍偏快，振幅尚可"
+    },
+    {
+      "id": "retest_legacy_no_ref",
+      "clockId": "clock_demo",
+      "adjustmentId": null,
+      "testedAt": "2026-06-15T00:00:00.000Z",
+      "dailyRateSeconds": 45,
+      "amplitude": 240,
+      "qualified": false,
+      "note": "追溯规则上线前的历史复测，无调校编号"
     }
   ]
 }

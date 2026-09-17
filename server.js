@@ -38,6 +38,16 @@ const initialData = {
       amplitude: 248,
       qualified: false,
       note: "仍偏快，振幅尚可"
+    },
+    {
+      id: "retest_legacy_no_ref",
+      clockId: "clock_demo",
+      adjustmentId: null,
+      testedAt: new Date(Date.now() - 86400000).toISOString(),
+      dailyRateSeconds: 45,
+      amplitude: 240,
+      qualified: false,
+      note: "追溯规则上线前的历史复测，无调校编号"
     }
   ]
 };
@@ -126,6 +136,29 @@ function latestAdjustment(db, clockId) {
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
 }
 
+// 复测可追溯规则：必须显式引用该钟表最近一次调校编号；
+// 编号缺失、不属于该钟表或不是最近一次，一律 409 且不写入。
+function assertTraceableAdjustment(db, clock, adjustmentId) {
+  if (adjustmentId === undefined || adjustmentId === null || adjustmentId === "") {
+    const error = new Error("复测必须引用该钟表最近一次调校编号，编号缺失");
+    error.status = 409;
+    throw error;
+  }
+  const adjustment = db.adjustments.find((item) => item.id === adjustmentId);
+  if (!adjustment || adjustment.clockId !== clock.id) {
+    const error = new Error("调校编号不存在或不属于该钟表");
+    error.status = 409;
+    throw error;
+  }
+  const latest = latestAdjustment(db, clock.id);
+  if (!latest || latest.id !== adjustment.id) {
+    const error = new Error("复测引用的调校编号不是该钟表最近一次调校");
+    error.status = 409;
+    throw error;
+  }
+  return adjustment;
+}
+
 function clockSummary(db, clock) {
   const retest = latestRetest(db, clock.id);
   const adjustment = latestAdjustment(db, clock.id);
@@ -210,7 +243,9 @@ async function handle(req, res) {
     const clock = findClock(db, retestMatch[1]);
     const body = await parseBody(req);
     required(body, ["dailyRateSeconds", "amplitude"]);
-    const adjustmentId = body.adjustmentId || latestAdjustment(db, clock.id)?.id || null;
+    // 先校验追溯链，任何不符都在写入前抛 409
+    const adjustment = assertTraceableAdjustment(db, clock, body.adjustmentId);
+    const adjustmentId = adjustment.id;
     const qualified = body.qualified !== undefined
       ? Boolean(body.qualified)
       : Math.abs(Number(body.dailyRateSeconds)) <= Number(clock.targetDailyRateSeconds);
